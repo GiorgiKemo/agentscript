@@ -1,7 +1,9 @@
 import { decodeProgram } from "../compiler/bytecode.js";
 
-const CONTAINER_KINDS = new Set(["navbar", "hero", "main", "section", "footer", "row", "column"]);
+const CONTAINER_KINDS = new Set(["page", "navbar", "hero", "main", "section", "footer", "row", "column"]);
+const SURFACE_KINDS = new Set(["navbar", "hero", "main", "section", "footer", "button", "field"]);
 const NONE_INDEX = 65535;
+const SAFE_RADIUS_CAP = 24;
 const CONDITIONAL_ACTIONS = new Set([
   "if-state-equals-literal",
   "if-state-not-equals-literal",
@@ -14,6 +16,7 @@ const CONDITIONAL_ACTIONS = new Set([
 ]);
 
 const DEFAULT_STYLES = {
+  page: { direction: "column", gap: 20 },
   navbar: { direction: "row", gap: 12, paddingX: 18, paddingY: 12 },
   hero: { direction: "column", gap: 20, paddingX: 26, paddingY: 26 },
   main: { direction: "column", gap: 24, paddingX: 24, paddingY: 24 },
@@ -35,16 +38,26 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function buildTree(nodes, pageName) {
+function buildTree(nodes, pages, pageName) {
   const root = {
-    kind: "page",
-    id: "page",
+    kind: "app",
+    id: "app",
     text: "",
     pageName,
-    children: [],
+    pages: [],
     styles: {},
     runtimeStyles: {}
   };
+
+  const builtPages = pages.map((page, index) => ({
+    kind: "page",
+    id: page.id,
+    pageIndex: index,
+    text: "",
+    children: [],
+    styles: {},
+    runtimeStyles: {}
+  }));
 
   const builtNodes = nodes.map((node) => ({
     ...node,
@@ -55,22 +68,26 @@ function buildTree(nodes, pageName) {
 
   builtNodes.forEach((node) => {
     if (node.parentIndex === NONE_INDEX) {
-      root.children.push(node);
+      builtPages[node.pageIndex]?.children.push(node);
       return;
     }
 
     builtNodes[node.parentIndex].children.push(node);
   });
 
-  function connectParents(node, parent = null) {
+  function connectParents(node, parent = null, page = null) {
     node.parent = parent;
+    node.page = page;
     for (const child of node.children) {
-      connectParents(child, node);
+      connectParents(child, node, page ?? node);
     }
   }
 
-  connectParents(root);
-  return { root, builtNodes };
+  for (const page of builtPages) {
+    connectParents(page, root, page);
+  }
+  root.pages = builtPages;
+  return { root, builtPages, builtNodes };
 }
 
 function applyVisualDeclaration(node, declaration) {
@@ -83,6 +100,7 @@ function applyVisualDeclaration(node, declaration) {
       break;
     case "background":
       styles.background = declaration.values[0];
+      styles.hasSurface = true;
       break;
     case "font-size":
       styles.fontSize = declaration.values[0];
@@ -111,6 +129,7 @@ function applyVisualDeclaration(node, declaration) {
     case "padding":
       styles.paddingY = declaration.values[0];
       styles.paddingX = declaration.values[1];
+      styles.hasExplicitPadding = true;
       break;
     case "direction":
       styles.direction = declaration.values[0];
@@ -137,6 +156,7 @@ function applyVisualDeclaration(node, declaration) {
       break;
     case "shadow":
       styles.shadow = declaration.values[0];
+      styles.hasSurface = declaration.values[0] !== "none";
       break;
     case "grow":
       styles.grow = declaration.values[0];
@@ -152,6 +172,9 @@ function applyVisualDeclaration(node, declaration) {
       break;
     case "show":
       styles.hidden = false;
+      break;
+    case "free-content":
+      styles.freeContent = true;
       break;
     default:
       break;
@@ -247,7 +270,7 @@ function applyReorder(node, declaration, builtNodes) {
   }
 }
 
-function applyRules(root, builtNodes, rules) {
+function applyRules(root, builtPages, builtNodes, rules) {
   function seedDefaults(node) {
     node.runtimeStyles = { ...(DEFAULT_STYLES[node.kind] ?? {}) };
     for (const child of node.children) {
@@ -255,10 +278,12 @@ function applyRules(root, builtNodes, rules) {
     }
   }
 
-  seedDefaults(root);
+  for (const page of builtPages) {
+    seedDefaults(page);
+  }
 
   for (const rule of rules) {
-    const node = builtNodes[rule.targetIndex];
+    const node = rule.targetType === "page" ? builtPages[rule.targetIndex] : builtNodes[rule.targetIndex];
     if (!node) {
       continue;
     }
@@ -275,6 +300,47 @@ function applyRules(root, builtNodes, rules) {
       }
     }
   }
+
+  function hasVisibleSurface(node) {
+    return SURFACE_KINDS.has(node.kind) || Boolean(node.runtimeStyles.hasSurface);
+  }
+
+  function ensureSafeInset(node) {
+    const styles = node.runtimeStyles;
+    if (!hasVisibleSurface(node) || styles.freeContent) {
+      return;
+    }
+
+    const radius = styles.radius ?? DEFAULT_STYLES[node.kind]?.radius ?? 0;
+    const height = styles.height ?? DEFAULT_STYLES[node.kind]?.height ?? 0;
+    const curvedEdge =
+      radius > 0 ? Math.min(radius, height > 0 ? Math.floor(height / 2) : SAFE_RADIUS_CAP, SAFE_RADIUS_CAP) : 0;
+    const safePaddingX = Math.max(12, curvedEdge > 0 ? Math.ceil(curvedEdge * 0.8) : 0);
+    const safePaddingY = Math.max(10, curvedEdge > 0 ? Math.ceil(curvedEdge * 0.5) : 0);
+
+    styles.paddingX = Math.max(styles.paddingX ?? 0, safePaddingX);
+    styles.paddingY = Math.max(styles.paddingY ?? 0, safePaddingY);
+
+    if (radius > 0) {
+      styles.clipContent = true;
+    }
+  }
+
+  function finalizeNode(node) {
+    ensureSafeInset(node);
+
+    for (const child of node.children) {
+      finalizeNode(child);
+    }
+  }
+
+  for (const page of builtPages) {
+    finalizeNode(page);
+  }
+}
+
+function selectorForTarget(node) {
+  return node.kind === "page" ? `[data-page-id="${node.id}"]` : `[data-node-id="${node.id}"]`;
 }
 
 function cssBlockForNode(node) {
@@ -287,16 +353,13 @@ function cssBlockForNode(node) {
   if (typeof styles.fontWeight === "number") lines.push(`font-weight: ${styles.fontWeight};`);
   if (styles.textAlign) lines.push(`text-align: ${styles.textAlign};`);
   if (styles.shadow) lines.push(`box-shadow: ${toCssShadow(styles.shadow)};`);
+  if (styles.clipContent) lines.push("overflow: hidden;");
   if (typeof styles.width === "number") lines.push(`width: ${styles.width}px;`);
   if (typeof styles.height === "number") lines.push(`min-height: ${styles.height}px;`);
   if (typeof styles.grow === "number") lines.push(`flex-grow: ${styles.grow};`);
   if (typeof styles.gap === "number" && CONTAINER_KINDS.has(node.kind)) lines.push(`gap: ${styles.gap}px;`);
   if (typeof styles.radius === "number") lines.push(`border-radius: ${styles.radius}px;`);
-  if (
-    typeof styles.paddingY === "number" &&
-    typeof styles.paddingX === "number" &&
-    (CONTAINER_KINDS.has(node.kind) || node.kind === "button" || node.kind === "field")
-  ) {
+  if (typeof styles.paddingY === "number" && typeof styles.paddingX === "number") {
     lines.push(`padding: ${styles.paddingY}px ${styles.paddingX}px;`);
   }
   if (styles.direction && CONTAINER_KINDS.has(node.kind)) lines.push(`flex-direction: ${styles.direction};`);
@@ -304,24 +367,30 @@ function cssBlockForNode(node) {
   if (styles.justifyContent && CONTAINER_KINDS.has(node.kind)) {
     lines.push(`justify-content: ${toCssAlignment(styles.justifyContent)};`);
   }
+  if (styles.freeContent) {
+    lines.push("max-width: none;");
+    lines.push("min-width: max-content;");
+    lines.push("white-space: nowrap;");
+    lines.push("overflow-wrap: normal;");
+    lines.push("word-break: normal;");
+    lines.push("overflow: visible;");
+  }
   lines.push(...positionLinesForNode(node));
 
   if (lines.length === 0) {
     return "";
   }
 
-  return `[data-node-id="${node.id}"] {\n  ${lines.join("\n  ")}\n}`;
+  return `${selectorForTarget(node)} {\n  ${lines.join("\n  ")}\n}`;
 }
 
 function collectNodeCss(root) {
   const blocks = [];
 
   function visit(node) {
-    if (node.kind !== "page") {
-      const block = cssBlockForNode(node);
-      if (block) {
-        blocks.push(block);
-      }
+    const block = cssBlockForNode(node);
+    if (block) {
+      blocks.push(block);
     }
 
     for (const child of node.children) {
@@ -329,7 +398,9 @@ function collectNodeCss(root) {
     }
   }
 
-  visit(root);
+  for (const page of root.pages) {
+    visit(page);
+  }
   return blocks.join("\n\n");
 }
 
@@ -377,6 +448,13 @@ function renderNode(node, states, clickableIds) {
   }
 }
 
+function renderPage(page, states, clickableIds, isActive) {
+  const hiddenAttribute = isActive ? "" : " hidden";
+  return `<section class="page-view" data-page-id="${page.id}"${hiddenAttribute}>${page.children
+    .map((child) => renderNode(child, states, clickableIds))
+    .join("")}</section>`;
+}
+
 function baseCss(pageName) {
   return `:root {
   color-scheme: light;
@@ -387,6 +465,10 @@ function baseCss(pageName) {
 
 * {
   box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 body {
@@ -402,6 +484,12 @@ body {
   max-width: 1080px;
   margin: 0 auto;
   padding: 32px 20px 48px;
+}
+
+.page-view {
+  display: flex;
+  width: 100%;
+  min-width: 0;
 }
 
 .page-shell::before {
@@ -424,6 +512,18 @@ body {
 .node-column {
   display: flex;
   width: 100%;
+  min-width: 0;
+}
+
+.node-navbar > *,
+.node-hero > *,
+.node-main > *,
+.node-section > *,
+.node-footer > *,
+.node-row > *,
+.node-column > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .node-navbar,
@@ -454,6 +554,9 @@ body {
   letter-spacing: 0.01em;
   color: #18314f;
   background: #dfe9ff;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
@@ -467,6 +570,7 @@ body {
   outline: none;
   color: #17335b;
   background: white;
+  max-width: 100%;
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
@@ -477,20 +581,31 @@ body {
 
 .node-heading {
   margin: 0;
-  max-width: 12ch;
-  line-height: 0.94;
+  max-width: 100%;
+  line-height: 1.05;
   letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .node-text {
   margin: 0;
-  max-width: 56ch;
+  max-width: 100%;
   line-height: 1.6;
   color: #4f6683;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }`;
 }
 
 function toRuntimeAction(action, program) {
+  if (action.name === "go-to-page") {
+    return {
+      name: action.name,
+      targetPageIndex: action.targetPageIndex
+    };
+  }
+
   if (action.name === "show-node" || action.name === "hide-node") {
     return {
       name: action.name,
@@ -544,6 +659,10 @@ function generateRuntimeScript(program) {
     .filter((node) => node.bindingStateIndex !== NONE_INDEX);
 
   const runtimePayload = {
+    startPageIndex: program.startPageIndex ?? 0,
+    pages: program.pages.map((page) => ({
+      id: page.id
+    })),
     states: program.states.map((state) => ({
       id: state.id,
       initialValue: state.initialValue
@@ -563,7 +682,9 @@ function generateRuntimeScript(program) {
   return `const CONDITIONAL_ACTIONS = new Set(${conditionalActionNames});
 const runtime = ${JSON.stringify(runtimePayload, null, 2)};
 
+  let currentPageIndex = runtime.startPageIndex ?? 0;
   const stateValues = runtime.states.map((state) => state.initialValue);
+  const pageElements = runtime.pages.map((page) => document.querySelector(\`[data-page-id="\${page.id}"]\`));
   const nodeElements = new Map(
     runtime.nodes.map((node) => [node.id, document.querySelector(\`[data-node-id="\${node.id}"]\`)])
   );
@@ -572,6 +693,15 @@ const runtime = ${JSON.stringify(runtimePayload, null, 2)};
     element: nodeElements.get(binding.nodeId)
   }));
   const bindingByNodeId = new Map(bindingNodes.map((binding) => [binding.nodeId, binding]));
+
+function renderPages() {
+  pageElements.forEach((element, index) => {
+    if (!element) {
+      return;
+    }
+    element.hidden = index !== currentPageIndex;
+  });
+}
 
 function renderBindings() {
   for (const binding of bindingNodes) {
@@ -643,6 +773,12 @@ function applyAction(action) {
     } else {
       applyActions(action.elseActions);
     }
+    return;
+  }
+
+  if (action.name === "go-to-page") {
+    currentPageIndex = action.targetPageIndex;
+    renderPages();
     return;
   }
 
@@ -737,14 +873,15 @@ for (const handler of runtime.handlers) {
   });
 }
 
+renderPages();
 renderBindings();
 `;
 }
 
 export function renderProgram(buffer) {
   const program = decodeProgram(buffer);
-  const { root, builtNodes } = buildTree(program.nodes, program.pageName);
-  applyRules(root, builtNodes, program.rules);
+  const { root, builtPages, builtNodes } = buildTree(program.nodes, program.pages, program.pageName);
+  applyRules(root, builtPages, builtNodes, program.rules);
 
   const clickableIds = new Set(
     program.handlers
@@ -763,7 +900,9 @@ export function renderProgram(buffer) {
   </head>
   <body>
     <div class="page-shell">
-      ${root.children.map((node) => renderNode(node, program.states, clickableIds)).join("\n      ")}
+      ${root.pages
+        .map((page, index) => renderPage(page, program.states, clickableIds, index === program.startPageIndex))
+        .join("\n      ")}
     </div>
     <script type="module" src="./app.js"></script>
   </body>

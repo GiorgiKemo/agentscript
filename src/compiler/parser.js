@@ -83,6 +83,31 @@ function parseLineParts(stream, context) {
 
 function parseLayoutStatement(stream) {
   const kindToken = expectWord(stream, "Expected a layout node kind");
+  if (kindToken.value === "use") {
+    expectWord(stream, 'Expected `block` after `use`', "block");
+    const blockIdToken = expectWord(stream, "Expected a block id after `use block`");
+    let instanceId = null;
+    let instanceIdSpan = null;
+
+    if (stream.match("WORD", "as")) {
+      stream.consume();
+      const instanceIdToken = expectWord(stream, "Expected an instance id after `as`");
+      instanceId = instanceIdToken.value;
+      instanceIdSpan = instanceIdToken.span;
+    }
+
+    const blockUsage = {
+      type: "BlockUsage",
+      blockId: blockIdToken.value,
+      blockIdSpan: blockIdToken.span,
+      instanceId,
+      instanceIdSpan,
+      span: mergeSpans(kindToken.span, instanceIdSpan ?? blockIdToken.span)
+    };
+    requireStatementBoundary(stream, "block usage");
+    return blockUsage;
+  }
+
   const nextToken = stream.current();
 
   if (nextToken.type === "LBRACE") {
@@ -181,6 +206,74 @@ function parseLayoutStatement(stream) {
   throw new CompilerError("Expected either a block, a quoted string, or `from <state>`", stream.current().span);
 }
 
+function parsePageDefinition(stream) {
+  const createToken = expectWord(stream, 'Expected "create"', "create");
+  expectWord(stream, 'Expected `page` after `create`', "page");
+  const idToken = expectWord(stream, "Expected a page id after `create page`");
+  stream.expect("LBRACE", 'Expected "{" after page id');
+  stream.skipNewlines();
+
+  const body = [];
+  while (!stream.match("RBRACE")) {
+    if (stream.match("EOF")) {
+      throw new CompilerError("Unclosed page block", createToken.span);
+    }
+    body.push(parseLayoutStatement(stream));
+  }
+
+  const closeToken = stream.consume();
+  const definition = {
+    type: "PageDefinition",
+    id: idToken.value,
+    idSpan: idToken.span,
+    body,
+    span: mergeSpans(createToken.span, closeToken.span)
+  };
+  requireStatementBoundary(stream, "page block");
+  return definition;
+}
+
+function parseBlockDefinition(stream) {
+  const createToken = expectWord(stream, 'Expected "create"', "create");
+  expectWord(stream, 'Expected `block` after `create`', "block");
+  const idToken = expectWord(stream, "Expected a block id after `create block`");
+  stream.expect("LBRACE", 'Expected "{" after block id');
+  stream.skipNewlines();
+
+  const body = [];
+  while (!stream.match("RBRACE")) {
+    if (stream.match("EOF")) {
+      throw new CompilerError("Unclosed block definition", createToken.span);
+    }
+    body.push(parseLayoutStatement(stream));
+  }
+
+  const closeToken = stream.consume();
+  const definition = {
+    type: "BlockDefinition",
+    id: idToken.value,
+    idSpan: idToken.span,
+    body,
+    span: mergeSpans(createToken.span, closeToken.span)
+  };
+  requireStatementBoundary(stream, "block definition");
+  return definition;
+}
+
+function parseStartPageDeclaration(stream) {
+  const startToken = expectWord(stream, 'Expected "start"', "start");
+  expectWord(stream, 'Expected `page` after `start`', "page");
+  const idToken = expectWord(stream, "Expected a page id after `start page`");
+  const declaration = {
+    type: "StartPageDeclaration",
+    pageId: idToken.value,
+    pageIdSpan: idToken.span,
+    span: mergeSpans(startToken.span, idToken.span)
+  };
+  requireStatementBoundary(stream, "start page declaration");
+  return declaration;
+}
+
 function parseStateDeclaration(stream) {
   const stateToken = expectWord(stream, 'Expected "state"', "state");
   const idToken = expectWord(stream, "Expected a state id");
@@ -210,6 +303,10 @@ function parseActionStatement(stream) {
   const { parts, span } = parseLineParts(stream, "action statement");
   return {
     type: "ActionStatement",
+    partTokens: parts.map((token) => ({
+      type: token.type,
+      value: token.value
+    })),
     parts: parts.map((token) => token.value),
     span
   };
@@ -341,13 +438,83 @@ export function parseLayoutAst(source) {
   const stream = new TokenStream(lexSource(source));
   stream.skipNewlines();
 
-  const pageToken = expectWord(stream, 'Expected a page declaration starting with "page"', "page");
-  const pageNameToken = expectWord(stream, "Expected a page name after `page`");
-  requireStatementBoundary(stream, "page declaration");
+  if (stream.match("WORD", "page")) {
+    const pageToken = expectWord(stream, 'Expected a page declaration starting with "page"', "page");
+    const pageNameToken = expectWord(stream, "Expected a page name after `page`");
+    requireStatementBoundary(stream, "page declaration");
+
+    const states = [];
+    const handlers = [];
+    const blocks = [];
+    const body = [];
+
+    while (!stream.match("EOF")) {
+      stream.skipNewlines();
+      if (stream.match("EOF")) {
+        break;
+      }
+
+      if (stream.match("WORD", "state")) {
+        states.push(parseStateDeclaration(stream));
+        continue;
+      }
+
+      if (stream.match("WORD", "when")) {
+        handlers.push(parseEventHandler(stream));
+        continue;
+      }
+
+      if (stream.match("WORD", "create") && stream.current(1).type === "WORD" && stream.current(1).value === "block") {
+        blocks.push(parseBlockDefinition(stream));
+        continue;
+      }
+
+      body.push(parseLayoutStatement(stream));
+    }
+
+    const pages = [
+      {
+        type: "PageDefinition",
+        id: "main",
+        idSpan: pageNameToken.span,
+        body,
+        span: body.length > 0 ? mergeSpans(body[0].span, body[body.length - 1].span) : pageNameToken.span
+      }
+    ];
+
+    const endSpan =
+      handlers[handlers.length - 1]?.span ??
+      body[body.length - 1]?.span ??
+      blocks[blocks.length - 1]?.span ??
+      states[states.length - 1]?.span ??
+      pageNameToken.span;
+
+    return {
+      type: "LayoutProgram",
+      programKind: "single-page",
+      appName: pageNameToken.value,
+      pageName: pageNameToken.value,
+      pageNameSpan: pageNameToken.span,
+      startPageId: "main",
+      startPageSpan: pageNameToken.span,
+      states,
+      handlers,
+      blocks,
+      pages,
+      body,
+      span: mergeSpans(pageToken.span, endSpan)
+    };
+  }
+
+  const appToken = expectWord(stream, 'Expected a page or app declaration starting with "page" or "app"', "app");
+  const appNameToken = expectWord(stream, "Expected an app name after `app`");
+  requireStatementBoundary(stream, "app declaration");
 
   const states = [];
   const handlers = [];
-  const body = [];
+  const blocks = [];
+  const pages = [];
+  let startPage = null;
 
   while (!stream.match("EOF")) {
     stream.skipNewlines();
@@ -365,23 +532,49 @@ export function parseLayoutAst(source) {
       continue;
     }
 
-    body.push(parseLayoutStatement(stream));
+    if (stream.match("WORD", "start")) {
+      if (startPage) {
+        throw new CompilerError("Only one `start page` declaration is allowed", stream.current().span);
+      }
+      startPage = parseStartPageDeclaration(stream);
+      continue;
+    }
+
+    if (stream.match("WORD", "create") && stream.current(1).type === "WORD" && stream.current(1).value === "block") {
+      blocks.push(parseBlockDefinition(stream));
+      continue;
+    }
+
+    if (stream.match("WORD", "create")) {
+      pages.push(parsePageDefinition(stream));
+      continue;
+    }
+
+    throw new CompilerError("Expected `state`, `start page`, `create page`, `create block`, or `when`", stream.current().span);
   }
 
   const endSpan =
     handlers[handlers.length - 1]?.span ??
-    body[body.length - 1]?.span ??
+    pages[pages.length - 1]?.span ??
+    blocks[blocks.length - 1]?.span ??
     states[states.length - 1]?.span ??
-    pageNameToken.span;
+    startPage?.span ??
+    appNameToken.span;
 
   return {
     type: "LayoutProgram",
-    pageName: pageNameToken.value,
-    pageNameSpan: pageNameToken.span,
+    programKind: "app",
+    appName: appNameToken.value,
+    pageName: appNameToken.value,
+    pageNameSpan: appNameToken.span,
+    startPageId: startPage?.pageId ?? null,
+    startPageSpan: startPage?.pageIdSpan ?? null,
     states,
     handlers,
-    body,
-    span: mergeSpans(pageToken.span, endSpan)
+    blocks,
+    pages,
+    body: [],
+    span: mergeSpans(appToken.span, endSpan)
   };
 }
 
@@ -389,6 +582,10 @@ function parseStyleDeclaration(stream) {
   const { parts, span } = parseLineParts(stream, "style declaration");
   return {
     type: "StyleDeclaration",
+    partTokens: parts.map((token) => ({
+      type: token.type,
+      value: token.value
+    })),
     parts: parts.map((token) => token.value),
     span
   };

@@ -85,3 +85,61 @@ when click pulse {
   assert.equal(condition.elseActions[0].type, "ActionStatement");
   assert.deepEqual(condition.elseActions[0].parts, ["reset", "clicks"]);
 });
+
+test("parseLayoutAst supports app pages and start page declarations", () => {
+  const source = `app Demo
+
+start page home
+
+state count 0
+
+create page home {
+  button open_about "About"
+}
+
+create page about {
+  text note "About page"
+}
+
+when click open_about {
+  go to page about
+}`;
+
+  const ast = parseLayoutAst(source);
+
+  assert.equal(ast.programKind, "app");
+  assert.equal(ast.appName, "Demo");
+  assert.equal(ast.startPageId, "home");
+  assert.equal(ast.pages.length, 2);
+  assert.equal(ast.pages[0].id, "home");
+  assert.equal(ast.pages[1].id, "about");
+  assert.equal(ast.pages[0].body[0].kind, "button");
+  assert.deepEqual(ast.handlers[0].actions[0].parts, ["go", "to", "page", "about"]);
+});
+
+test("parseLayoutAst supports block definitions, block usage, and boolean states", () => {
+  const source = `app Demo
+
+state ready true
+
+create block stat_card {
+  section shell {
+    text value from ready
+  }
+}
+
+create page home {
+  use block stat_card as primary_card
+}
+`;
+
+  const ast = parseLayoutAst(source);
+
+  assert.equal(ast.states[0].valueToken.value, "true");
+  assert.equal(ast.blocks.length, 1);
+  assert.equal(ast.blocks[0].id, "stat_card");
+  assert.equal(ast.blocks[0].body[0].type, "ContainerNode");
+  assert.equal(ast.pages[0].body[0].type, "BlockUsage");
+  assert.equal(ast.pages[0].body[0].blockId, "stat_card");
+  assert.equal(ast.pages[0].body[0].instanceId, "primary_card");
+});

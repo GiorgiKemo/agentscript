@@ -6,6 +6,7 @@
   "scripts": {
     "check": "node src/cli.js check examples/home.agent examples/home.style",
     "compile": "node src/cli.js compile examples/home.agent examples/home.style dist",
+    "format": "node src/cli.js format examples/home.agent examples/home.style",
     "inspect": "node src/cli.js inspect dist/app.awuib",
     "demo": "node src/cli.js compile examples/home.agent examples/home.style dist && node src/cli.js inspect dist/app.awuib",
     "preview": "node src/cli.js compile examples/home.agent examples/home.style dist && node src/server.js dist 4173",

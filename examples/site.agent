@@ -1,0 +1,36 @@
+app Atlas
+
+start page home
+
+state status "This app is defined in one code file"
+
+create page home {
+  section hero_box {
+    heading title "One file for logic"
+    text intro "Pages, state, and navigation all live in the same AgentScript source."
+    text status_note from status
+    row actions {
+      button open_about "Open About"
+    }
+  }
+}
+
+create page about {
+  section about_box {
+    heading about_title "About this app"
+    text about_copy "The compiler still generates multiple output files, but the author only writes one code file and one style file."
+    row about_actions {
+      button go_home "Back Home"
+    }
+  }
+}
+
+when click open_about {
+  set status to "You are on the about page"
+  go to page about
+}
+
+when click go_home {
+  set status to "This app is defined in one code file"
+  go to page home
+}

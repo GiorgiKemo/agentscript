@@ -1,6 +1,10 @@
 const MAGIC = Buffer.from("AWUI");
-const VERSION = 11;
+const VERSION = 14;
 const NONE_INDEX = 65535;
+const RULE_TARGET_TYPES = {
+  node: 1,
+  page: 2
+};
 
 export const KIND_CODES = {
   navbar: 1,
@@ -46,7 +50,8 @@ export const PROPERTY_CODES = {
   shadow: 23,
   grow: 24,
   "push-right": 25,
-  "push-left": 26
+  "push-left": 26,
+  "free-content": 27
 };
 
 export const PROPERTY_NAMES = Object.fromEntries(
@@ -70,7 +75,8 @@ export const ACTION_CODES = {
   "if-state-greater-than-literal": 14,
   "if-state-greater-than-state": 15,
   "if-state-less-than-literal": 16,
-  "if-state-less-than-state": 17
+  "if-state-less-than-state": 17,
+  "go-to-page": 18
 };
 
 export const ACTION_NAMES = Object.fromEntries(
@@ -88,7 +94,8 @@ export const EVENT_NAMES = Object.fromEntries(
 
 const VALUE_TYPES = {
   number: 1,
-  string: 2
+  string: 2,
+  boolean: 3
 };
 const CONDITIONAL_LITERAL_ACTIONS = new Set([
   "if-state-equals-literal",
@@ -164,6 +171,12 @@ function encodeValue(writer, value) {
     return;
   }
 
+  if (typeof value === "boolean") {
+    writer.writeUint8(VALUE_TYPES.boolean);
+    writer.writeUint8(value ? 1 : 0);
+    return;
+  }
+
   writer.writeUint8(VALUE_TYPES.string);
   writer.writeString(String(value));
 }
@@ -176,6 +189,10 @@ function decodeValue(reader) {
 
   if (type === VALUE_TYPES.string) {
     return reader.readString();
+  }
+
+  if (type === VALUE_TYPES.boolean) {
+    return reader.readUint8() === 1;
   }
 
   throw new Error(`Unknown value type code "${type}"`);
@@ -191,6 +208,11 @@ function encodeAction(writer, action) {
 
   if (action.name === "show-node" || action.name === "hide-node") {
     writer.writeUint16(action.targetNodeIndex);
+    return;
+  }
+
+  if (action.name === "go-to-page") {
+    writer.writeUint16(action.targetPageIndex);
     return;
   }
 
@@ -263,6 +285,13 @@ function decodeAction(reader) {
     return {
       name: actionName,
       targetNodeIndex: targetIndex
+    };
+  }
+
+  if (actionName === "go-to-page") {
+    return {
+      name: actionName,
+      targetPageIndex: targetIndex
     };
   }
 
@@ -362,6 +391,12 @@ export function encodeProgram(program) {
   writer.writeUint8(VERSION);
   writer.writeString(program.pageName);
 
+  writer.writeUint16(program.pages.length);
+  for (const page of program.pages) {
+    writer.writeString(page.id);
+  }
+  writer.writeUint16(program.startPageIndex ?? 0);
+
   writer.writeUint16(program.states.length);
   for (const state of program.states) {
     writer.writeString(state.id);
@@ -379,11 +414,13 @@ export function encodeProgram(program) {
     writer.writeString(node.id);
     writer.writeString(node.text ?? "");
     writer.writeUint16(node.bindingStateIndex ?? NONE_INDEX);
+    writer.writeUint16(node.pageIndex ?? 0);
     writer.writeUint16(node.parentIndex);
   }
 
   writer.writeUint16(program.rules.length);
   for (const rule of program.rules) {
+    writer.writeUint8(RULE_TARGET_TYPES[rule.targetType ?? "node"]);
     writer.writeUint16(rule.targetIndex);
     writer.writeUint16(rule.declarations.length);
 
@@ -435,6 +472,15 @@ export function decodeProgram(buffer) {
 
   const pageName = reader.readString();
 
+  const pageCount = reader.readUint16();
+  const pages = [];
+  for (let index = 0; index < pageCount; index += 1) {
+    pages.push({
+      id: reader.readString()
+    });
+  }
+  const startPageIndex = reader.readUint16();
+
   const stateCount = reader.readUint16();
   const states = [];
   for (let index = 0; index < stateCount; index += 1) {
@@ -453,6 +499,7 @@ export function decodeProgram(buffer) {
       id: reader.readString(),
       text: reader.readString(),
       bindingStateIndex: reader.readUint16(),
+      pageIndex: reader.readUint16(),
       parentIndex: reader.readUint16()
     });
   }
@@ -460,6 +507,7 @@ export function decodeProgram(buffer) {
   const ruleCount = reader.readUint16();
   const rules = [];
   for (let index = 0; index < ruleCount; index += 1) {
+    const targetTypeCode = reader.readUint8();
     const targetIndex = reader.readUint16();
     const declarationCount = reader.readUint16();
     const declarations = [];
@@ -479,6 +527,7 @@ export function decodeProgram(buffer) {
     }
 
     rules.push({
+      targetType: targetTypeCode === RULE_TARGET_TYPES.page ? "page" : "node",
       targetIndex,
       declarations
     });
@@ -505,6 +554,8 @@ export function decodeProgram(buffer) {
 
   return {
     pageName,
+    pages,
+    startPageIndex,
     states,
     nodes,
     rules,

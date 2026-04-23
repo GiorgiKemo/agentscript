@@ -2,12 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { decodeProgram } from "./compiler/bytecode.js";
 import { checkSources, compileSources } from "./compiler/compile.js";
+import { formatLayoutSource, formatStyleSource } from "./compiler/format.js";
 import { describeProgramIr } from "./compiler/ir.js";
 
 function printUsage() {
   console.log("Usage:");
   console.log("  node src/cli.js compile <layout.agent> <style.style> <outDir>");
   console.log("  node src/cli.js check <layout.agent> <style.style>");
+  console.log("  node src/cli.js format <layout.agent> <style.style>");
   console.log("  node src/cli.js inspect <app.awuib>");
 }
 
@@ -60,6 +62,19 @@ function inspect(bytecodePath) {
   console.log(JSON.stringify(describeProgramIr(program), null, 2));
 }
 
+function format(layoutPath, stylePath) {
+  const layoutSource = readTextFile(layoutPath);
+  const styleSource = readTextFile(stylePath);
+  const formattedLayout = formatLayoutSource(layoutSource);
+  const formattedStyle = formatStyleSource(styleSource);
+
+  fs.writeFileSync(layoutPath, formattedLayout, "utf8");
+  fs.writeFileSync(stylePath, formattedStyle, "utf8");
+
+  console.log(`Formatted ${layoutPath}`);
+  console.log(`Formatted ${stylePath}`);
+}
+
 const [, , command, ...args] = process.argv;
 
 if (!command) {
@@ -82,6 +97,13 @@ try {
     }
 
     check(args[0], args[1]);
+  } else if (command === "format") {
+    if (args.length !== 2) {
+      printUsage();
+      process.exit(1);
+    }
+
+    format(args[0], args[1]);
   } else if (command === "inspect") {
     if (args.length !== 1) {
       printUsage();

@@ -1,104 +1,397 @@
-select nav {
+select top {
   line up
-  space 10px
   align center
+  space 16px
 }
 
-select home {
-  fill #1f3f75
-  text color white
+select brand {
+  text size 26px
+  text color #143224
 }
 
-select login {
-  fill royalblue
-  text color white
-  round 999px
-  switch position with pricing
+select nav_note {
   push right
+  text color #56705f
 }
 
-select intro {
-  fill #e9f0ff
+select board {
+  stack
+  space 24px
+}
+
+select composer {
+  fill #f6f1e6
+  shadow medium
+}
+
+select kicker {
+  text color #5d7564
+  bold
 }
 
 select title {
-  increase font-size by 8px
+  text size 56px
+  text color #10281e
+}
+
+select intro {
+  text color #4c6455
+}
+
+select input_bar {
+  line up
+  align center
+  space 14px
+}
+
+select draft_input {
+  fill white
+  text color #173729
+  size 420px 54px
+  padding 14px 18px
+  round 16px
+}
+
+select add_task {
+  fill #1e6b43
+  text color white
+  padding 14px 22px
+  round 16px
+}
+
+select clear_all {
+  fill #e5ecdf
+  text color #173729
+  padding 14px 22px
+  round 16px
+}
+
+select summary {
+  line up
+  align stretch
+  space 16px
+}
+
+select total_card {
+  fill white
+  shadow soft
+  stack
+  space 4px
+  round 22px
+  grow
+}
+
+select done_card {
+  fill #12291f
+  shadow soft
+  stack
+  space 4px
+  round 22px
+  grow
+}
+
+select status_box {
+  fill #e6f0e3
+  shadow soft
+  center
+  round 22px
+  grow
+}
+
+select total_label {
+  text size 14px
+  text color #5d7564
+  bold
+}
+
+select total_value {
+  text size 36px
+  text color #10281e
+  bold
+}
+
+select done_label {
+  text size 14px
+  text color #9ec0aa
+  bold
+}
+
+select done_value {
+  text size 36px
+  text color white
+  bold
+}
+
+select board_status {
+  text size 18px
+  text color #204c35
+  bold
   center text
 }
 
-select note_input {
+select task_list {
+  fill #fcfaf4
+  shadow medium
+  stack
+  space 18px
+}
+
+select list_head {
+  line up
+  align end
+  space 14px
+}
+
+select list_title {
+  text size 34px
+  text color #10281e
+}
+
+select list_note {
+  push right
+  text color #5d7564
+}
+
+select empty_box {
+  fill #efe5d5
+  round 20px
+  center
+}
+
+select empty_state {
+  text size 18px
+  text color #6d5a44
+  center text
+}
+
+select slots {
+  stack
+  space 14px
+}
+
+select item_one {
+  hide
   fill white
-  text color #17335b
-  size 360px 48px
+  line up
+  align center
+  space 14px
+  shadow soft
+  round 20px
+}
+
+select badge_one {
+  hide
+  fill #dff2e5
+  line up
+  center
+  round 999px
+  padding 8px 14px
+}
+
+select badge_one_text {
+  text size 14px
+  text color #19613e
+  bold
+  center text
+}
+
+select task_one {
+  grow
+  text size 18px
+  text color #10281e
+  bold
+}
+
+select item_one_actions {
+  line up
+  space 10px
+  push right
+}
+
+select done_one {
+  fill #1e6b43
+  text color white
   padding 12px 16px
   round 14px
 }
 
-select note_preview {
-  text color #36577f
+select remove_one {
+  fill #efe5d5
+  text color #6d5a44
+  padding 12px 16px
+  round 14px
 }
 
-select click_count {
-  text color #173f8a
-  increase text size by 10px
-  bold
-}
-
-select click_status {
-  text color #36577f
-}
-
-select actions {
-  line up
-  space 16px
-  center
-}
-
-select start {
-  fill #132238
-  text color white
-  padding 14px 22px
-  increase size by 12px
-  grow
-}
-
-select pulse {
-  fill #3558a8
-  text color white
-  increase size by 6px
-}
-
-select reset {
-  fill #dbe4f8
-  text color #17335b
-}
-
-select detail {
+select item_two {
   hide
   fill white
-  stack
-  space 10px
+  line up
+  align center
+  space 14px
   shadow soft
+  round 20px
 }
 
-select detail_title {
-  text size 24px
-  text color #17335b
+select badge_two {
+  hide
+  fill #dff2e5
+  line up
+  center
+  round 999px
+  padding 8px 14px
+}
+
+select badge_two_text {
+  text size 14px
+  text color #19613e
+  bold
   center text
+}
+
+select task_two {
+  grow
+  text size 18px
+  text color #10281e
   bold
 }
 
-select detail_text {
-  text color #36577f
+select item_two_actions {
+  line up
+  space 10px
+  push right
+}
+
+select done_two {
+  fill #1e6b43
+  text color white
+  padding 12px 16px
+  round 14px
+}
+
+select remove_two {
+  fill #efe5d5
+  text color #6d5a44
+  padding 12px 16px
+  round 14px
+}
+
+select item_three {
+  hide
+  fill white
+  line up
+  align center
+  space 14px
+  shadow soft
+  round 20px
+}
+
+select badge_three {
+  hide
+  fill #dff2e5
+  line up
+  center
+  round 999px
+  padding 8px 14px
+}
+
+select badge_three_text {
+  text size 14px
+  text color #19613e
+  bold
+  center text
+}
+
+select task_three {
+  grow
+  text size 18px
+  text color #10281e
+  bold
+}
+
+select item_three_actions {
+  line up
+  space 10px
+  push right
+}
+
+select done_three {
+  fill #1e6b43
+  text color white
+  padding 12px 16px
+  round 14px
+}
+
+select remove_three {
+  fill #efe5d5
+  text color #6d5a44
+  padding 12px 16px
+  round 14px
+}
+
+select item_four {
+  hide
+  fill white
+  line up
+  align center
+  space 14px
+  shadow soft
+  round 20px
+}
+
+select badge_four {
+  hide
+  fill #dff2e5
+  line up
+  center
+  round 999px
+  padding 8px 14px
+}
+
+select badge_four_text {
+  text size 14px
+  text color #19613e
+  bold
+  center text
+}
+
+select task_four {
+  grow
+  text size 18px
+  text color #10281e
+  bold
+}
+
+select item_four_actions {
+  line up
+  space 10px
+  push right
+}
+
+select done_four {
+  fill #1e6b43
+  text color white
+  padding 12px 16px
+  round 14px
+}
+
+select remove_four {
+  fill #efe5d5
+  text color #6d5a44
+  padding 12px 16px
+  round 14px
 }
 
 select foot {
-  fill #132238
+  fill #12291f
   text color white
   line up
   spread out
 }
 
-select docs {
-  move after support
+select foot_left {
+  text color white
+}
+
+select foot_right {
+  text color #cfe0d4
 }

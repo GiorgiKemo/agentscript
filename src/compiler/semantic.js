@@ -11,10 +11,15 @@ const CONTAINER_KINDS = new Set([
 ]);
 
 const LEAF_KINDS = new Set(["button", "heading", "text", "field"]);
+const REFERENCE_STYLE_DECLARATIONS = new Set(["move-before", "move-after", "switch-position"]);
 const EVENT_TARGET_KINDS = {
   click: new Set(["button"]),
   input: new Set(["field"])
 };
+
+function isBooleanWord(value) {
+  return value === "true" || value === "false";
+}
 
 function ensureUniqueId(id, idMap, span) {
   if (idMap.has(id)) {
@@ -45,7 +50,14 @@ function parseStateLiteral(valueToken) {
     };
   }
 
-  throw new CompilerError("State initializers must be numbers or quoted strings", valueToken.span);
+  if (isBooleanWord(valueToken.value)) {
+    return {
+      type: "boolean",
+      value: valueToken.value === "true"
+    };
+  }
+
+  throw new CompilerError("State initializers must be numbers, booleans, or quoted strings", valueToken.span);
 }
 
 function lowerLineAction(actionAst) {
@@ -99,6 +111,16 @@ function lowerLineAction(actionAst) {
         targetStateId: parts[1],
         valueType: "number",
         value: Number(parts[3]),
+        span: actionAst.span
+      };
+    }
+
+    if (isBooleanWord(parts[3])) {
+      return {
+        name: "set-literal",
+        targetStateId: parts[1],
+        valueType: "boolean",
+        value: parts[3] === "true",
         span: actionAst.span
       };
     }
@@ -169,6 +191,14 @@ function lowerLineAction(actionAst) {
     };
   }
 
+  if (head === "go" && parts.length === 4 && parts[1] === "to" && parts[2] === "page") {
+    return {
+      name: "go-to-page",
+      targetPageId: parts[3],
+      span: actionAst.span
+    };
+  }
+
   throw new CompilerError(`Unknown action statement "${parts.join(" ")}"`, actionAst.span);
 }
 
@@ -208,14 +238,66 @@ function lowerHandler(handlerAst) {
   };
 }
 
-function lowerLayoutNode(astNode, state) {
+function prefixScopedId(prefix, id) {
+  return prefix ? `${prefix}__${id}` : id;
+}
+
+function nextBlockInstanceId(blockId, counters, scopePrefix) {
+  const scopeKey = `${scopePrefix ?? "<root>"}::${blockId}`;
+  const count = (counters.get(scopeKey) ?? 0) + 1;
+  counters.set(scopeKey, count);
+  const baseId = count === 1 ? blockId : `${blockId}-${count}`;
+  return prefixScopedId(scopePrefix, baseId);
+}
+
+function resolveNodeId(astNode, context, state, isRoot = false) {
+  const localId = astNode.id ?? nextImplicitId(astNode.kind, context.implicitCounters);
+  const finalId =
+    isRoot && context.rootInstanceId
+      ? context.rootInstanceId
+      : prefixScopedId(context.scopePrefix, localId);
+
+  ensureUniqueId(finalId, state.seenNodeIds, astNode.idSpan ?? astNode.kindSpan);
+  return finalId;
+}
+
+function lowerLayoutNode(astNode, state, context) {
+  if (astNode.type === "BlockUsage") {
+    const definition = context.blocksById.get(astNode.blockId);
+    if (!definition) {
+      throw new CompilerError(`Unknown block "${astNode.blockId}"`, astNode.blockIdSpan);
+    }
+
+    if (context.activeBlockIds.includes(astNode.blockId)) {
+      throw new CompilerError(`Recursive block usage is not allowed for "${astNode.blockId}"`, astNode.span);
+    }
+
+    if (definition.body.length !== 1) {
+      throw new CompilerError(`Block "${astNode.blockId}" must contain exactly one root node`, definition.span);
+    }
+
+    const instanceId =
+      astNode.instanceId
+        ? prefixScopedId(context.scopePrefix, astNode.instanceId)
+        : nextBlockInstanceId(astNode.blockId, state.blockInstanceCounters, context.scopePrefix);
+
+    const blockContext = {
+      blocksById: context.blocksById,
+      activeBlockIds: [...context.activeBlockIds, astNode.blockId],
+      scopePrefix: instanceId,
+      rootInstanceId: instanceId,
+      implicitCounters: new Map()
+    };
+
+    return lowerLayoutNode(definition.body[0], state, blockContext);
+  }
+
   if (astNode.type === "ContainerNode") {
     if (!CONTAINER_KINDS.has(astNode.kind)) {
       throw new CompilerError(`Unknown container kind "${astNode.kind}"`, astNode.kindSpan);
     }
 
-    const id = astNode.id ?? nextImplicitId(astNode.kind, state.implicitCounters);
-    ensureUniqueId(id, state.seenNodeIds, astNode.idSpan ?? astNode.kindSpan);
+    const id = resolveNodeId(astNode, context, state, context.rootInstanceId !== null);
 
     const node = {
       kind: astNode.kind,
@@ -226,21 +308,29 @@ function lowerLayoutNode(astNode, state) {
       span: astNode.span
     };
 
+    const childContext = {
+      ...context,
+      rootInstanceId: null
+    };
     for (const child of astNode.children) {
-      node.children.push(lowerLayoutNode(child, state));
+      node.children.push(lowerLayoutNode(child, state, childContext));
     }
 
     return node;
+  }
+
+  if (astNode.type !== "LeafNode") {
+    throw new CompilerError("Unknown layout node", astNode.span);
   }
 
   if (!LEAF_KINDS.has(astNode.kind)) {
     throw new CompilerError(`Unknown leaf kind "${astNode.kind}"`, astNode.kindSpan);
   }
 
-  ensureUniqueId(astNode.id, state.seenNodeIds, astNode.idSpan);
+  const id = resolveNodeId(astNode, context, state, context.rootInstanceId !== null);
   return {
     kind: astNode.kind,
-    id: astNode.id,
+    id,
     text: astNode.content.type === "LiteralContent" ? astNode.content.value : "",
     textBinding: astNode.content.type === "BindingContent" ? astNode.content.stateId : null,
     children: [],
@@ -283,6 +373,14 @@ function parseStyleDeclarations(declaration) {
 
   if (head === "background" && parts.length === 2) {
     return [createStyleDeclaration("background", [parts[1]], declaration.span)];
+  }
+
+  if (head === "set" && parts.length === 2 && parts[1] === "free") {
+    return [createStyleDeclaration("free-content", [], declaration.span)];
+  }
+
+  if (head === "text" && parts.length === 3 && parts[1] === "set" && parts[2] === "free") {
+    return [createStyleDeclaration("free-content", [], declaration.span)];
   }
 
   if (head === "hide" && parts.length === 1) {
@@ -452,17 +550,48 @@ export function lowerLayoutAst(ast) {
   const loweredHandlers = ast.handlers.map(lowerHandler);
   const state = {
     seenNodeIds: new Map([["page", true]]),
-    implicitCounters: new Map()
+    blockInstanceCounters: new Map()
   };
+  const seenBlockIds = new Map();
+  const blocksById = new Map(
+    ast.blocks.map((blockAst) => {
+      ensureUniqueId(blockAst.id, seenBlockIds, blockAst.idSpan);
+      if (blockAst.body.length !== 1) {
+        throw new CompilerError(`Block "${blockAst.id}" must contain exactly one root node`, blockAst.span);
+      }
+      return [blockAst.id, blockAst];
+    })
+  );
+
+  const seenPageIds = new Map();
+  const pages = ast.pages.map((pageAst) => {
+    ensureUniqueId(pageAst.id, seenPageIds, pageAst.idSpan);
+    const pageContext = {
+      blocksById,
+      activeBlockIds: [],
+      scopePrefix: null,
+      rootInstanceId: null,
+      implicitCounters: new Map()
+    };
+    return {
+      id: pageAst.id,
+      children: pageAst.body.map((node) => lowerLayoutNode(node, state, pageContext)),
+      span: pageAst.span
+    };
+  });
+
+  const startPageId = ast.startPageId ?? pages[0]?.id ?? "main";
 
   return {
-    kind: "page",
-    id: "page",
+    kind: "app",
+    id: "app",
     pageName: ast.pageName,
+    startPageId,
     text: "",
     states,
     handlers: loweredHandlers,
-    children: ast.body.map((node) => lowerLayoutNode(node, state)),
+    pages,
+    children: [],
     span: ast.span
   };
 }
@@ -479,7 +608,7 @@ export function lowerStyleAst(ast) {
 export function flattenLayout(root) {
   const flatNodes = [];
 
-  function visit(node, parentIndex) {
+  function visit(node, parentIndex, pageIndex) {
     for (const child of node.children) {
       const currentIndex = flatNodes.length;
       flatNodes.push({
@@ -487,18 +616,29 @@ export function flattenLayout(root) {
         id: child.id,
         text: child.text,
         textBinding: child.textBinding,
+        pageIndex,
         parentIndex,
         span: child.span
       });
-      visit(child, currentIndex);
+      visit(child, currentIndex, pageIndex);
     }
   }
 
-  visit(root, 65535);
+  root.pages.forEach((page, pageIndex) => {
+    visit(page, 65535, pageIndex);
+  });
   return flatNodes;
 }
 
-function validateAction(action, statesById, nodeMap) {
+function validateAction(action, statesById, nodeMap, pageMap) {
+  if (action.name === "go-to-page") {
+    if (!pageMap.has(action.targetPageId)) {
+      throw new CompilerError(`Action targets unknown page "${action.targetPageId}"`, action.span);
+    }
+
+    return action;
+  }
+
   if (action.name === "show-node" || action.name === "hide-node") {
     if (!nodeMap.has(action.targetNodeId)) {
       throw new CompilerError(`Action targets unknown node "${action.targetNodeId}"`, action.span);
@@ -549,8 +689,8 @@ function validateAction(action, statesById, nodeMap) {
       throw new CompilerError(`Condition targets unknown state "${action.targetStateId}"`, action.span);
     }
 
-    const nestedActions = action.actions.map((childAction) => validateAction(childAction, statesById, nodeMap));
-    const elseActions = action.elseActions.map((childAction) => validateAction(childAction, statesById, nodeMap));
+    const nestedActions = action.actions.map((childAction) => validateAction(childAction, statesById, nodeMap, pageMap));
+    const elseActions = action.elseActions.map((childAction) => validateAction(childAction, statesById, nodeMap, pageMap));
     const conditionName = action.name.replace(/-raw$/, "");
     const requiresNumber = conditionName === "if-state-greater-than" || conditionName === "if-state-less-than";
 
@@ -571,6 +711,21 @@ function validateAction(action, statesById, nodeMap) {
         name: `${conditionName}-literal`,
         targetStateId: action.targetStateId,
         value: action.rawValue,
+        actions: nestedActions,
+        elseActions,
+        span: action.span
+      };
+    }
+
+    if (isBooleanWord(action.rawValue)) {
+      if (targetState.type !== "boolean") {
+        throw new CompilerError(`Boolean conditions require a boolean state "${action.targetStateId}"`, action.span);
+      }
+
+      return {
+        name: `${conditionName}-literal`,
+        targetStateId: action.targetStateId,
+        value: action.rawValue === "true",
         actions: nestedActions,
         elseActions,
         span: action.span
@@ -614,6 +769,13 @@ function validateAction(action, statesById, nodeMap) {
     if (requiresNumber) {
       throw new CompilerError(
         `Numeric comparisons require a number or numeric state after "${action.targetStateId}"`,
+        action.span
+      );
+    }
+
+    if (targetState.type === "boolean") {
+      throw new CompilerError(
+        `Unquoted boolean conditions must be \`true\`, \`false\`, or another boolean state after "${action.targetStateId}"`,
         action.span
       );
     }
@@ -681,6 +843,20 @@ function validateAction(action, statesById, nodeMap) {
       };
     }
 
+    if (isBooleanWord(action.rawValue)) {
+      if (targetState.type !== "boolean") {
+        throw new CompilerError(`Boolean literals can only be assigned to boolean state "${action.targetStateId}"`, action.span);
+      }
+
+      return {
+        name: "set-literal",
+        targetStateId: action.targetStateId,
+        valueType: "boolean",
+        value: action.rawValue === "true",
+        span: action.span
+      };
+    }
+
     if (targetState.type !== "text") {
       throw new CompilerError(`Text literals can only be assigned to text state "${action.targetStateId}"`, action.span);
     }
@@ -697,17 +873,26 @@ function validateAction(action, statesById, nodeMap) {
   throw new CompilerError(`Unknown action "${action.name}"`, action.span);
 }
 
-function validateActions(handlers, statesById, nodeMap) {
+function validateActions(handlers, statesById, nodeMap, pageMap) {
   return handlers.map((handler) => ({
     ...handler,
-    actions: handler.actions.map((action) => validateAction(action, statesById, nodeMap))
+    actions: handler.actions.map((action) => validateAction(action, statesById, nodeMap, pageMap))
   }));
 }
 
 export function validateProgram(root, rules) {
   const flatNodes = flattenLayout(root);
   const nodeMap = new Map(flatNodes.map((node) => [node.id, node]));
+  const pageMap = new Map(root.pages.map((page) => [page.id, page]));
   const stateMap = new Map(root.states.map((state) => [state.id, state]));
+
+  if (root.pages.length === 0) {
+    throw new CompilerError("An app must define at least one page", root.span);
+  }
+
+  if (!pageMap.has(root.startPageId)) {
+    throw new CompilerError(`Start page "${root.startPageId}" does not exist`, root.span);
+  }
 
   for (const node of flatNodes) {
     if (node.textBinding && !stateMap.has(node.textBinding)) {
@@ -727,6 +912,21 @@ export function validateProgram(root, rules) {
   }
 
   for (const rule of rules) {
+    if (rule.targetKind === "page") {
+      const targetPage = pageMap.get(rule.targetId);
+      if (!targetPage) {
+        throw new CompilerError(`Style rule targets unknown page "${rule.targetId}"`, rule.span);
+      }
+
+      for (const declaration of rule.declarations) {
+        if (REFERENCE_STYLE_DECLARATIONS.has(declaration.name)) {
+          throw new CompilerError(`Page styles do not support "${declaration.name}"`, declaration.span);
+        }
+      }
+
+      continue;
+    }
+
     const targetNode = nodeMap.get(rule.targetId);
     if (!targetNode) {
       throw new CompilerError(`Style rule targets unknown id "${rule.targetId}"`, rule.span);
@@ -740,11 +940,7 @@ export function validateProgram(root, rules) {
     }
 
     for (const declaration of rule.declarations) {
-      if (
-        declaration.name === "move-before" ||
-        declaration.name === "move-after" ||
-        declaration.name === "switch-position"
-      ) {
+      if (REFERENCE_STYLE_DECLARATIONS.has(declaration.name)) {
         const referenceId = declaration.values[0];
         if (!nodeMap.has(referenceId)) {
           throw new CompilerError(
@@ -756,7 +952,7 @@ export function validateProgram(root, rules) {
     }
   }
 
-  const handlers = validateActions(root.handlers, stateMap, nodeMap);
+  const handlers = validateActions(root.handlers, stateMap, nodeMap, pageMap);
   for (const handler of handlers) {
     const targetNode = nodeMap.get(handler.targetId);
     if (!targetNode) {
@@ -777,6 +973,8 @@ export function validateProgram(root, rules) {
   }
 
   return {
+    pages: root.pages,
+    startPageId: root.startPageId,
     nodes: flatNodes,
     states: root.states,
     handlers

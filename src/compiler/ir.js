@@ -10,7 +10,15 @@ const CONDITIONAL_ACTIONS = new Set([
   "if-state-less-than-state"
 ]);
 
-function buildActionIr(action, stateIndexById, nodeIndexById) {
+function buildActionIr(action, stateIndexById, nodeIndexById, pageIndexById) {
+  if (action.name === "go-to-page") {
+    return {
+      name: "go-to-page",
+      targetPageIndex: pageIndexById.get(action.targetPageId),
+      span: action.span
+    };
+  }
+
   if (action.name === "set-state") {
     return {
       name: "set-state",
@@ -67,8 +75,10 @@ function buildActionIr(action, stateIndexById, nodeIndexById) {
     const irAction = {
       name: action.name,
       targetStateIndex: stateIndexById.get(action.targetStateId),
-      actions: action.actions.map((childAction) => buildActionIr(childAction, stateIndexById, nodeIndexById)),
-      elseActions: action.elseActions.map((childAction) => buildActionIr(childAction, stateIndexById, nodeIndexById)),
+      actions: action.actions.map((childAction) => buildActionIr(childAction, stateIndexById, nodeIndexById, pageIndexById)),
+      elseActions: action.elseActions.map((childAction) =>
+        buildActionIr(childAction, stateIndexById, nodeIndexById, pageIndexById)
+      ),
       span: action.span
     };
 
@@ -90,6 +100,13 @@ function buildActionIr(action, stateIndexById, nodeIndexById) {
 }
 
 function describeAction(action, program) {
+  if (action.name === "go-to-page") {
+    return {
+      name: action.name,
+      targetPageId: program.pages[action.targetPageIndex]?.id ?? null
+    };
+  }
+
   if (action.name === "set-state") {
     return {
       name: action.name,
@@ -160,12 +177,19 @@ function describeAction(action, program) {
   };
 }
 
-export function buildProgramIr(pageName, nodes, rules, states, handlers) {
+export function buildProgramIr(pageName, pages, startPageId, nodes, rules, states, handlers) {
   const nodeIndexById = new Map(nodes.map((node, index) => [node.id, index]));
   const stateIndexById = new Map(states.map((state, index) => [state.id, index]));
+  const pageIndexById = new Map(pages.map((page, index) => [page.id, index]));
 
   return {
     pageName,
+    startPageIndex: pageIndexById.get(startPageId) ?? 0,
+    pages: pages.map((page, index) => ({
+      index,
+      id: page.id,
+      span: page.span
+    })),
     states: states.map((state) => ({
       id: state.id,
       type: state.type,
@@ -177,14 +201,16 @@ export function buildProgramIr(pageName, nodes, rules, states, handlers) {
       id: node.id,
       text: node.text,
       bindingStateIndex: node.textBinding ? stateIndexById.get(node.textBinding) : 65535,
+      pageIndex: node.pageIndex,
       parentIndex: node.parentIndex,
       span: node.span
     })),
     rules: rules.map((rule) => ({
-      targetIndex: nodeIndexById.get(rule.targetId),
+      targetType: rule.targetKind === "page" ? "page" : "node",
+      targetIndex: rule.targetKind === "page" ? pageIndexById.get(rule.targetId) : nodeIndexById.get(rule.targetId),
       declarations: rule.declarations.map((declaration) => ({
         name: declaration.name,
-        values: REFERENCE_PROPERTIES.has(declaration.name)
+        values: REFERENCE_PROPERTIES.has(declaration.name) && rule.targetKind !== "page"
           ? [nodeIndexById.get(declaration.values[0])]
           : declaration.values.slice(),
         span: declaration.span
@@ -194,7 +220,7 @@ export function buildProgramIr(pageName, nodes, rules, states, handlers) {
     handlers: handlers.map((handler) => ({
       eventName: handler.eventName,
       targetIndex: nodeIndexById.get(handler.targetId),
-      actions: handler.actions.map((action) => buildActionIr(action, stateIndexById, nodeIndexById)),
+      actions: handler.actions.map((action) => buildActionIr(action, stateIndexById, nodeIndexById, pageIndexById)),
       span: handler.span
     }))
   };
@@ -203,10 +229,21 @@ export function buildProgramIr(pageName, nodes, rules, states, handlers) {
 export function describeProgramIr(program) {
   return {
     pageName: program.pageName,
+    startPageId: program.pages[program.startPageIndex]?.id ?? null,
+    pages: program.pages.map((page, index) => ({
+      index,
+      id: page.id
+    })),
     states: program.states.map((state, index) => ({
       index,
       id: state.id,
-      type: state.type ?? (typeof state.initialValue === "number" ? "number" : "text"),
+      type:
+        state.type ??
+        (typeof state.initialValue === "number"
+          ? "number"
+          : typeof state.initialValue === "boolean"
+            ? "boolean"
+            : "text"),
       initialValue: state.initialValue
     })),
     nodes: program.nodes.map((node, index) => ({
@@ -214,15 +251,18 @@ export function describeProgramIr(program) {
       kind: node.kind,
       id: node.id,
       text: node.text,
+      pageId: program.pages[node.pageIndex]?.id ?? null,
       bindingStateId: node.bindingStateIndex === 65535 ? null : program.states[node.bindingStateIndex]?.id ?? null,
       parentIndex: node.parentIndex
     })),
     rules: program.rules.map((rule) => ({
+      targetType: rule.targetType,
       targetIndex: rule.targetIndex,
-      targetId: program.nodes[rule.targetIndex]?.id ?? null,
+      targetId:
+        rule.targetType === "page" ? program.pages[rule.targetIndex]?.id ?? null : program.nodes[rule.targetIndex]?.id ?? null,
       declarations: rule.declarations.map((declaration) => ({
         name: declaration.name,
-        values: REFERENCE_PROPERTIES.has(declaration.name)
+        values: REFERENCE_PROPERTIES.has(declaration.name) && rule.targetType !== "page"
           ? [program.nodes[declaration.values[0]]?.id ?? null]
           : declaration.values.slice()
       }))

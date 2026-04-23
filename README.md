@@ -44,6 +44,58 @@ hero intro {
 }
 ```
 
+AgentScript also supports single-file multi-page apps:
+
+```txt
+app Atlas
+
+start page home
+
+state status "Ready"
+
+create page home {
+  heading title "Home"
+  button open_about "About"
+}
+
+create page about {
+  heading about_title "About"
+  text about_note from status
+  button go_home "Back"
+}
+
+when click open_about {
+  go to page about
+}
+
+when click go_home {
+  go to page home
+}
+```
+
+Reusable blocks can live in the same `.agent` file:
+
+```txt
+app Atlas
+
+state ready true
+
+create block stat_card {
+  section shell {
+    heading title "Ready"
+    text value from ready
+    button toggle "Toggle"
+  }
+}
+
+start page home
+
+create page home {
+  use block stat_card as primary_card
+  use block stat_card as backup_card
+}
+```
+
 Supported containers:
 
 - `navbar`
@@ -76,6 +128,7 @@ State is declared at the top level:
 
 ```txt
 state clicks 0
+state ready true
 state status "Waiting for your first click"
 ```
 
@@ -112,14 +165,18 @@ Recommended English-style actions:
 - `add <number> to <state>`
 - `take <number> from <state>`
 - `set <state> to <number>`
+- `set <state> to true|false`
 - `set <state> to "text"`
 - `set <state> to <other_state>`
 - `reset <state>`
 - `open <node>`
 - `close <node>`
+- `go to page <page_id>`
 - `change text of <node> to "text"`
 - `change text of <node> to <state>`
 - `if <state> is <value> { ... }`
+- `if <state> is true { ... }`
+- `if <state> is false { ... }`
 - `if <state> is not <value> { ... }`
 - `if <state> is greater than <number-or-state> { ... }`
 - `if <state> is less than <number-or-state> { ... }`
@@ -153,6 +210,8 @@ Supported style commands:
 - `fill <value>`
 - `hide`
 - `show`
+- `set free`
+- `text set free`
 - `center`
 - `center text`
 - `bold`
@@ -190,6 +249,15 @@ Supported style commands:
 - `move after <id>`
 - `switch position with <id>`
 
+Page wrappers can be styled explicitly with:
+
+```txt
+select page about {
+  fill #f5f1e8
+  padding 24px 24px
+}
+```
+
 The English-style commands lower into canonical internal properties. For example:
 
 - `increase size by 10px` becomes `increase-width` and `increase-height`
@@ -202,6 +270,9 @@ The English-style commands lower into canonical internal properties. For example
 - `spread out` becomes `justify-content: space-between`
 - `push right` becomes `margin-left: auto`
 - `push left` becomes `margin-right: auto`
+- surfaced `row` and `column` containers get safe default inset padding when you give them a visible box but do not set padding yourself
+- text is constrained inside containers by default with wrapping and flex-safe sizing
+- `set free` opts a node out of those text safety constraints so it can size or overflow more freely
 - `center items` becomes `align-items: center`
 - `center` on a container centers its content
 - `center` on a node centers that node relative to its parent
@@ -235,6 +306,12 @@ To run syntax and validation checks without writing output:
 npm run check
 ```
 
+To rewrite the example sources into canonical format:
+
+```bash
+npm run format
+```
+
 To open the generated page in a browser and inspect the DOM/CSS:
 
 ```bash
@@ -249,4 +326,10 @@ To run the baseline regression tests:
 
 ```bash
 npm test
+```
+
+To compile the multi-page example:
+
+```bash
+node src/cli.js compile examples/site.agent examples/site.style dist-site
 ```

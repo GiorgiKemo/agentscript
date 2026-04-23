@@ -1,0 +1,70 @@
+select page home {
+  gap 28px
+}
+
+select page about {
+  fill #f6efe2
+  padding 28px 28px
+  gap 28px
+}
+
+select hero_box {
+  fill white
+  shadow medium
+  round 28px
+  stack
+  space 18px
+}
+
+select title {
+  text size 52px
+  text color #10281e
+}
+
+select intro {
+  text color #4a6355
+}
+
+select status_note {
+  text color #1f5e40
+  bold
+}
+
+select actions {
+  line up
+}
+
+select open_about {
+  fill #1e6b43
+  text color white
+  padding 14px 22px
+  round 16px
+}
+
+select about_box {
+  fill white
+  shadow medium
+  round 28px
+  stack
+  space 18px
+}
+
+select about_title {
+  text size 44px
+  text color #10281e
+}
+
+select about_copy {
+  text color #4a6355
+}
+
+select about_actions {
+  line up
+}
+
+select go_home {
+  fill #173729
+  text color white
+  padding 14px 22px
+  round 16px
+}

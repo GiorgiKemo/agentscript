@@ -1,71 +1,361 @@
-page Launch
+page Focus
 
-state clicks 0
-state status "Waiting for your first click"
-state note "Type a note for the panel"
+state draft ""
+state status "Add your first task"
+state total 0
+state completed 0
+state slot1 ""
+state slot1_mode "open"
+state slot2 ""
+state slot2_mode "open"
+state slot3 ""
+state slot3_mode "open"
+state slot4 ""
+state slot4_mode "open"
 
-navbar nav {
-  button home "Home"
-  button features "Features"
-  button pricing "Pricing"
-  button login "Login"
+navbar top {
+  heading brand "AgentScript Todo"
+  text nav_note "Todo board written in the language itself"
 }
 
-hero intro {
-  heading title "Build UI in words"
-  text pitch "AgentScript lets humans and AI describe a page with strict commands, then compiles that source into binary bytecode."
-  field note_input from note
-  text note_preview from note
-  text click_count from clicks
-  text click_status from status
-  row actions {
-    button start "Start Building"
-    button pulse "Add Click"
-    button reset "Reset Panel"
+main board {
+  section composer {
+    text kicker "Plan work in plain words"
+    heading title "Keep today's work visible"
+    text intro "Type a task, add it, mark it done, reopen it, or remove it. The whole app source is written in AgentScript."
+    row input_bar {
+      field draft_input from draft
+      button add_task "Add Task"
+      button clear_all "Clear Board"
+    }
+    row summary {
+      column total_card {
+        text total_label "Tasks"
+        text total_value from total
+      }
+      column done_card {
+        text done_label "Done"
+        text done_value from completed
+      }
+      section status_box {
+        text board_status from status
+      }
+    }
   }
-  section detail {
-    text detail_title "Hidden panel"
-    text detail_text "This panel opens when the language words do what they say."
+  section task_list {
+    row list_head {
+      heading list_title "Today"
+      text list_note "Four quick slots for now. Dynamic lists come later."
+    }
+    section empty_box {
+      text empty_state "No tasks yet. Add one above."
+    }
+    column slots {
+      row item_one {
+        text task_one from slot1
+        section badge_one {
+          text badge_one_text "Done"
+        }
+        row item_one_actions {
+          button done_one "Done"
+          button remove_one "Remove"
+        }
+      }
+      row item_two {
+        text task_two from slot2
+        section badge_two {
+          text badge_two_text "Done"
+        }
+        row item_two_actions {
+          button done_two "Done"
+          button remove_two "Remove"
+        }
+      }
+      row item_three {
+        text task_three from slot3
+        section badge_three {
+          text badge_three_text "Done"
+        }
+        row item_three_actions {
+          button done_three "Done"
+          button remove_three "Remove"
+        }
+      }
+      row item_four {
+        text task_four from slot4
+        section badge_four {
+          text badge_four_text "Done"
+        }
+        row item_four_actions {
+          button done_four "Done"
+          button remove_four "Remove"
+        }
+      }
+    }
   }
-}
-
-when click pulse {
-  add 1 to clicks
-  if clicks is 1 {
-    set status to "First click unlocked the panel"
-    change text of pulse to "Click Again"
-  } else {
-    set status to "AgentScript state updated"
-    change text of pulse to "Clicked Again"
-  }
-  if clicks is greater than 3 {
-    change text of detail_title to "Momentum"
-  } else {
-    change text of detail_title to "Hidden panel"
-  }
-  change text of detail_text to note
-  open detail
-}
-
-when input note_input {
-  if note is "Type a note for the panel" {
-    set status to "Waiting for your first click"
-  } else {
-    set status to "Note ready for the panel"
-  }
-}
-
-when click reset {
-  reset clicks
-  reset status
-  change text of pulse to "Add Click"
-  change text of detail_title to "Hidden panel"
-  close detail
 }
 
 footer foot {
-  button docs "Docs"
-  button support "Support"
-  button terms "Terms"
-  button privacy "Privacy"
+  text foot_left "Built with AgentScript source only"
+  text foot_right "If the language needs more, we add it next"
+}
+
+when click add_task {
+  if draft is "" {
+    set status to "Type a task before adding"
+  } else {
+    if slot1 is "" {
+      if total is 0 {
+        close empty_box
+      }
+      set slot1 to draft
+      set slot1_mode to "open"
+      change text of done_one to "Done"
+      close badge_one
+      open item_one
+      add 1 to total
+      set status to "Added task one"
+      reset draft
+    } else {
+      if slot2 is "" {
+        if total is 0 {
+          close empty_box
+        }
+        set slot2 to draft
+        set slot2_mode to "open"
+        change text of done_two to "Done"
+        close badge_two
+        open item_two
+        add 1 to total
+        set status to "Added task two"
+        reset draft
+      } else {
+        if slot3 is "" {
+          if total is 0 {
+            close empty_box
+          }
+          set slot3 to draft
+          set slot3_mode to "open"
+          change text of done_three to "Done"
+          close badge_three
+          open item_three
+          add 1 to total
+          set status to "Added task three"
+          reset draft
+        } else {
+          if slot4 is "" {
+            if total is 0 {
+              close empty_box
+            }
+            set slot4 to draft
+            set slot4_mode to "open"
+            change text of done_four to "Done"
+            close badge_four
+            open item_four
+            add 1 to total
+            set status to "Added task four"
+            reset draft
+          } else {
+            set status to "List full. Remove a task before adding another"
+          }
+        }
+      }
+    }
+  }
+}
+
+when click done_one {
+  if slot1 is "" {
+    set status to "Task one is empty"
+  } else {
+    if slot1_mode is "open" {
+      set slot1_mode to "done"
+      open badge_one
+      change text of done_one to "Undo"
+      add 1 to completed
+      set status to "Task one completed"
+    } else {
+      set slot1_mode to "open"
+      close badge_one
+      change text of done_one to "Done"
+      take 1 from completed
+      set status to "Task one reopened"
+    }
+  }
+}
+
+when click remove_one {
+  if slot1 is "" {
+    set status to "Task one is already empty"
+  } else {
+    if total is 1 {
+      open empty_box
+    } else {
+      close empty_box
+    }
+    if slot1_mode is "done" {
+      take 1 from completed
+    }
+    take 1 from total
+    reset slot1
+    reset slot1_mode
+    change text of done_one to "Done"
+    close badge_one
+    close item_one
+    set status to "Task one removed"
+  }
+}
+
+when click done_two {
+  if slot2 is "" {
+    set status to "Task two is empty"
+  } else {
+    if slot2_mode is "open" {
+      set slot2_mode to "done"
+      open badge_two
+      change text of done_two to "Undo"
+      add 1 to completed
+      set status to "Task two completed"
+    } else {
+      set slot2_mode to "open"
+      close badge_two
+      change text of done_two to "Done"
+      take 1 from completed
+      set status to "Task two reopened"
+    }
+  }
+}
+
+when click remove_two {
+  if slot2 is "" {
+    set status to "Task two is already empty"
+  } else {
+    if total is 1 {
+      open empty_box
+    } else {
+      close empty_box
+    }
+    if slot2_mode is "done" {
+      take 1 from completed
+    }
+    take 1 from total
+    reset slot2
+    reset slot2_mode
+    change text of done_two to "Done"
+    close badge_two
+    close item_two
+    set status to "Task two removed"
+  }
+}
+
+when click done_three {
+  if slot3 is "" {
+    set status to "Task three is empty"
+  } else {
+    if slot3_mode is "open" {
+      set slot3_mode to "done"
+      open badge_three
+      change text of done_three to "Undo"
+      add 1 to completed
+      set status to "Task three completed"
+    } else {
+      set slot3_mode to "open"
+      close badge_three
+      change text of done_three to "Done"
+      take 1 from completed
+      set status to "Task three reopened"
+    }
+  }
+}
+
+when click remove_three {
+  if slot3 is "" {
+    set status to "Task three is already empty"
+  } else {
+    if total is 1 {
+      open empty_box
+    } else {
+      close empty_box
+    }
+    if slot3_mode is "done" {
+      take 1 from completed
+    }
+    take 1 from total
+    reset slot3
+    reset slot3_mode
+    change text of done_three to "Done"
+    close badge_three
+    close item_three
+    set status to "Task three removed"
+  }
+}
+
+when click done_four {
+  if slot4 is "" {
+    set status to "Task four is empty"
+  } else {
+    if slot4_mode is "open" {
+      set slot4_mode to "done"
+      open badge_four
+      change text of done_four to "Undo"
+      add 1 to completed
+      set status to "Task four completed"
+    } else {
+      set slot4_mode to "open"
+      close badge_four
+      change text of done_four to "Done"
+      take 1 from completed
+      set status to "Task four reopened"
+    }
+  }
+}
+
+when click remove_four {
+  if slot4 is "" {
+    set status to "Task four is already empty"
+  } else {
+    if total is 1 {
+      open empty_box
+    } else {
+      close empty_box
+    }
+    if slot4_mode is "done" {
+      take 1 from completed
+    }
+    take 1 from total
+    reset slot4
+    reset slot4_mode
+    change text of done_four to "Done"
+    close badge_four
+    close item_four
+    set status to "Task four removed"
+  }
+}
+
+when click clear_all {
+  reset draft
+  reset status
+  reset total
+  reset completed
+  reset slot1
+  reset slot1_mode
+  reset slot2
+  reset slot2_mode
+  reset slot3
+  reset slot3_mode
+  reset slot4
+  reset slot4_mode
+  change text of done_one to "Done"
+  change text of done_two to "Done"
+  change text of done_three to "Done"
+  change text of done_four to "Done"
+  close badge_one
+  close badge_two
+  close badge_three
+  close badge_four
+  close item_one
+  close item_two
+  close item_three
+  close item_four
+  open empty_box
 }

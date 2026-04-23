@@ -10,19 +10,31 @@ export function checkSources(layoutSource, styleSource) {
   const root = lowerLayoutAst(layoutAst);
   const rules = lowerStyleAst(styleAst);
   const validation = validateProgram(root, rules);
-  const ir = buildProgramIr(root.pageName, validation.nodes, rules, validation.states, validation.handlers);
+  const ir = buildProgramIr(
+    root.pageName,
+    validation.pages,
+    validation.startPageId,
+    validation.nodes,
+    rules,
+    validation.states,
+    validation.handlers
+  );
 
   return {
     layoutAst,
     styleAst,
     root,
     rules,
+    pages: validation.pages,
+    startPageId: validation.startPageId,
     nodes: validation.nodes,
     states: validation.states,
     handlers: validation.handlers,
     ir,
     program: {
       pageName: root.pageName,
+      pages: validation.pages,
+      startPageId: validation.startPageId,
       nodes: validation.nodes,
       states: validation.states,
       handlers: validation.handlers,
