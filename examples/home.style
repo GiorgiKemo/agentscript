@@ -1,0 +1,104 @@
+select nav {
+  line up
+  space 10px
+  align center
+}
+
+select home {
+  fill #1f3f75
+  text color white
+}
+
+select login {
+  fill royalblue
+  text color white
+  round 999px
+  switch position with pricing
+  push right
+}
+
+select intro {
+  fill #e9f0ff
+}
+
+select title {
+  increase font-size by 8px
+  center text
+}
+
+select note_input {
+  fill white
+  text color #17335b
+  size 360px 48px
+  padding 12px 16px
+  round 14px
+}
+
+select note_preview {
+  text color #36577f
+}
+
+select click_count {
+  text color #173f8a
+  increase text size by 10px
+  bold
+}
+
+select click_status {
+  text color #36577f
+}
+
+select actions {
+  line up
+  space 16px
+  center
+}
+
+select start {
+  fill #132238
+  text color white
+  padding 14px 22px
+  increase size by 12px
+  grow
+}
+
+select pulse {
+  fill #3558a8
+  text color white
+  increase size by 6px
+}
+
+select reset {
+  fill #dbe4f8
+  text color #17335b
+}
+
+select detail {
+  hide
+  fill white
+  stack
+  space 10px
+  shadow soft
+}
+
+select detail_title {
+  text size 24px
+  text color #17335b
+  center text
+  bold
+}
+
+select detail_text {
+  text color #36577f
+}
+
+select foot {
+  fill #132238
+  text color white
+  line up
+  spread out
+}
+
+select docs {
+  move after support
+}

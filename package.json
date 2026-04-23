@@ -1,0 +1,14 @@
+{
+  "name": "agentscript-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node src/cli.js check examples/home.agent examples/home.style",
+    "compile": "node src/cli.js compile examples/home.agent examples/home.style dist",
+    "inspect": "node src/cli.js inspect dist/app.awuib",
+    "demo": "node src/cli.js compile examples/home.agent examples/home.style dist && node src/cli.js inspect dist/app.awuib",
+    "preview": "node src/cli.js compile examples/home.agent examples/home.style dist && node src/server.js dist 4173",
+    "test": "node --test"
+  }
+}

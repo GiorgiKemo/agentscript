@@ -1,0 +1,71 @@
+page Launch
+
+state clicks 0
+state status "Waiting for your first click"
+state note "Type a note for the panel"
+
+navbar nav {
+  button home "Home"
+  button features "Features"
+  button pricing "Pricing"
+  button login "Login"
+}
+
+hero intro {
+  heading title "Build UI in words"
+  text pitch "AgentScript lets humans and AI describe a page with strict commands, then compiles that source into binary bytecode."
+  field note_input from note
+  text note_preview from note
+  text click_count from clicks
+  text click_status from status
+  row actions {
+    button start "Start Building"
+    button pulse "Add Click"
+    button reset "Reset Panel"
+  }
+  section detail {
+    text detail_title "Hidden panel"
+    text detail_text "This panel opens when the language words do what they say."
+  }
+}
+
+when click pulse {
+  add 1 to clicks
+  if clicks is 1 {
+    set status to "First click unlocked the panel"
+    change text of pulse to "Click Again"
+  } else {
+    set status to "AgentScript state updated"
+    change text of pulse to "Clicked Again"
+  }
+  if clicks is greater than 3 {
+    change text of detail_title to "Momentum"
+  } else {
+    change text of detail_title to "Hidden panel"
+  }
+  change text of detail_text to note
+  open detail
+}
+
+when input note_input {
+  if note is "Type a note for the panel" {
+    set status to "Waiting for your first click"
+  } else {
+    set status to "Note ready for the panel"
+  }
+}
+
+when click reset {
+  reset clicks
+  reset status
+  change text of pulse to "Add Click"
+  change text of detail_title to "Hidden panel"
+  close detail
+}
+
+footer foot {
+  button docs "Docs"
+  button support "Support"
+  button terms "Terms"
+  button privacy "Privacy"
+}

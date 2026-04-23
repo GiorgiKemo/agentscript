@@ -1,0 +1,4 @@
+dist/
+preview.err.log
+preview.out.log
+node_modules/
